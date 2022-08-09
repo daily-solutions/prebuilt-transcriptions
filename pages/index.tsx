@@ -1,7 +1,17 @@
-import React, {useCallback, useState, useRef, useEffect, useMemo} from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import DailyIframe from '@daily-co/daily-js';
-import SubtitlesIcon from '../icons/subtitles.svg';
-import Image from 'next/image';
+
+const CAPTIONS = {
+  iconPath: `${process.env.NEXT_PUBLIC_BASE_URL}/subtitles.svg`,
+  label: 'Captions',
+  tooltip: 'Turn captions on',
+};
+
+const STOP_CAPTIONS = {
+  iconPath: `${process.env.NEXT_PUBLIC_BASE_URL}/subtitles.svg`,
+  label: 'Stop CC',
+  tooltip: 'Turn captions off',
+};
 
 const CALL_OPTIONS = {
   showLeaveButton: true,
@@ -13,34 +23,47 @@ const CALL_OPTIONS = {
     width: '100%',
     height: '100%',
   },
+  customTrayButtons: {
+    captions: CAPTIONS,
+  }
 };
 
 const Index = () => {
   const ref = useRef(null);
   const [callFrame, setCallFrame] = useState(null);
-  const [show, setShow] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [captions, setCaptions] = useState([]);
 
   const url = `https://${process.env.NEXT_PUBLIC_DAILY_DOMAIN}.daily.co/${process.env.NEXT_PUBLIC_DAILY_ROOM}`;
 
-  const handleToggle = useCallback(async () => {
-    if (isTranscribing) {
-      await callFrame.stopTranscription();
-      return;
+  const handleCustomButtonClick = useCallback(async (event) => {
+    if (event.button_id === 'captions') {
+      if (isTranscribing) {
+        await callFrame.stopTranscription();
+        await callFrame.updateCustomTrayButtons({ captions: CAPTIONS });
+        return;
+      }
+      await callFrame.startTranscription();
+      await callFrame.updateCustomTrayButtons({ captions: STOP_CAPTIONS });
     }
-    await callFrame.startTranscription();
   }, [callFrame, isTranscribing]);
 
   const handleNewMessage = useCallback(
     (e) => {
       if (e.fromId === 'transcription' && e.data?.is_final) {
+        setIsTranscribing(true);
+
+        const participants = callFrame.participants();
+        const name =
+          participants.local.session_id === e.data.session_id
+            ? participants.local.user_name
+            : participants[e.data.session_id].user_name;
         setCaptions(captions =>
-          [...captions, `${e.data.user_name}: ${e.data.text}`]
+          [...captions, `${name}: ${e.data.text}`]
         );
       }
     },
-    []
+    [callFrame]
   );
 
   const handleTranscriptionStarted = useCallback(() => {
@@ -75,23 +98,42 @@ const Index = () => {
         isOwner: true,
       })
     });
-
     const resJson = await res.json();
 
     await newCallFrame.join({ url, token: resJson.token });
-    setShow(true);
+  }, [url]);
+
+  useEffect(() => {
+    if (!callFrame) return;
 
     const leaveCall = () => {
-      setCallFrame(null);
       callFrame.destroy();
+      setCallFrame(null);
     };
 
-    newCallFrame.on('left-meeting', leaveCall);
-    newCallFrame.on('transcription-started', handleTranscriptionStarted);
-    newCallFrame.on('transcription-stopped', handleTranscriptionStopped)
-    newCallFrame.on('transcription-error', handleTranscriptionError);
-    newCallFrame.on('app-message', handleNewMessage);
-  }, [callFrame, handleNewMessage, handleTranscriptionError, handleTranscriptionStarted, handleTranscriptionStopped, url]);
+    callFrame.on('left-meeting', leaveCall);
+    callFrame.on('transcription-started', handleTranscriptionStarted);
+    callFrame.on('transcription-stopped', handleTranscriptionStopped)
+    callFrame.on('transcription-error', handleTranscriptionError);
+    callFrame.on('custom-button-click', handleCustomButtonClick);
+    callFrame.on('app-message', handleNewMessage);
+
+    return () => {
+      callFrame.off('left-meeting', leaveCall);
+      callFrame.off('transcription-started', handleTranscriptionStarted);
+      callFrame.off('transcription-stopped', handleTranscriptionStopped)
+      callFrame.off('transcription-error', handleTranscriptionError);
+      callFrame.off('custom-button-click', handleCustomButtonClick);
+      callFrame.off('app-message', handleNewMessage);
+    }
+  }, [
+    callFrame,
+    handleCustomButtonClick,
+    handleNewMessage,
+    handleTranscriptionError,
+    handleTranscriptionStarted,
+    handleTranscriptionStopped
+  ]);
 
   useEffect(() => {
     if (callFrame) return;
@@ -100,36 +142,9 @@ const Index = () => {
 
   return (
     <div>
-      {show && (
-        <button
-          type="button"
-          className="transcription"
-          onClick={handleToggle}
-        >
-          <Image src={SubtitlesIcon} alt="Subtitle" />
-          {isTranscribing ? 'Stop Captions': 'Captions'}
-        </button>
-      )}
       {isTranscribing && <div className="captions">{captions.slice(-1).pop()}</div>}
       <div ref={ref} className="call" />
       <style jsx>{`
-        .transcription {
-          z-index: 99;
-          position: fixed;
-          bottom: 0.5em;
-          right: 5em;
-          background-color: transparent;
-          color: #FFFFFF;
-          border: 0;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: flex-start;
-          cursor: pointer;
-        }
-        .transcription:hover {
-          background-color: #1f2d3d;
-        }
         .captions {
           z-index: 99;
           position: fixed;

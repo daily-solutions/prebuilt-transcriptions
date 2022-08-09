@@ -144,6 +144,9 @@ const Index = () => {
 
   return (
     <div>
+      <head>
+        <title>Prebuilt Transcriptions</title>
+      </head>
       {isTranscribing && caption && <div className="captions">{caption}</div>}
       <div ref={ref} className="call" />
       <style jsx>{`

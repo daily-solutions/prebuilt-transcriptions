@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import DailyIframe from '@daily-co/daily-js';
 
 const CAPTIONS = {
@@ -135,6 +135,8 @@ const Index = () => {
     handleTranscriptionStopped
   ]);
 
+  const caption = useMemo(() => captions[captions.length - 1], [captions]);
+
   useEffect(() => {
     if (callFrame) return;
     joinCall();
@@ -142,14 +144,15 @@ const Index = () => {
 
   return (
     <div>
-      {isTranscribing && <div className="captions">{captions.slice(-1).pop()}</div>}
+      {isTranscribing && caption && <div className="captions">{caption}</div>}
       <div ref={ref} className="call" />
       <style jsx>{`
         .captions {
+          background: rgba(8, 8, 8, 0.75);
           z-index: 99;
           position: fixed;
           bottom: 5em;
-          padding: 1em;
+          padding: 0.5em;
           color: white;
           left: 50%;
           transform: translate(-50%, 0);
